@@ -18,11 +18,9 @@ if __name__ == '__main__':
 
     # Define VideoCapture objects
     cap_in = cv2.VideoCapture('test.avi')
-    #cap_out = cv2.VideoCapture(0)
-    # Define the codec and create VideoWriter object
-    #fourcc = cv2.cv.CV_FOURCC(*'DIVX')
-    out = cv2.VideoWriter('output.avi',fourcc, 20.0, (640,480))
-
+    fourcc = cv2.cv.CV_FOURCC('F', 'M', 'P', '4')
+    out = cv2.VideoWriter('output.avi', fourcc, 20.0, (1280,720))
+    
     while(cap_in.isOpened()):
         # read frame
         ret, frame = cap_in.read()
@@ -32,7 +30,6 @@ if __name__ == '__main__':
 
             # write frame
             out.write(frame)
-            # cv2.imshow('frame',gray)
             
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
@@ -40,7 +37,6 @@ if __name__ == '__main__':
             break
         
     cap_in.release()
-    #cap_out.release()
     out.release()
     cv2.destroyAllWindows()
     
