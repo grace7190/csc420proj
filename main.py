@@ -44,32 +44,6 @@ def detectShot(frame1, frame2, option):
         
     else:
         raise Exception("detectShot takes 'ssd' or 'norm' as 3rd input")
-        
-
-def affine_solver(kp1, kp2, matches, k):
-    '''given two sets of keypoints, sorted matches, and k, calculate affine 
-    transformation for top k matches'''
-    top_k = matches[0:k]
-    match1 = []
-    match2 = []
-    for feat in top_k:
-        match1.append(kp1[int(feat[0])].pt)
-        match2.append(kp2[int(feat[1])].pt)
-        
-    #construct matrices for computing affine transformation
-    p1 = []
-    p2 = []
-    for pt1 in match1:
-        p1.append([pt1[0],pt1[1],0,0,1,0])
-        p1.append([0,0,pt1[0],pt1[1],0,1])
-    for pt2 in match2:
-        p2.append([pt2[0]])
-        p2.append([pt2[1]])
-    
-    p1 = np.array(p1)
-    p2 = np.array(p2)
-    a = np.dot(np.dot(scipy.linalg.pinv(np.dot(np.transpose(p1),p1)),np.transpose(p1)),p2)
-    return a
     
 def predict_location(frame, kp1, des1):
     '''use SIFT to find logo in given frame and predict location of logo'''
@@ -105,72 +79,6 @@ def featurecorr(obj_pca, scene_pca):
         if ratio < threshold:
             match.append((i, distances.index(min1), ratio))
     return match
-        
-    
-def findLogo(frame, kp1, des1):
-    '''use SIFT to find logo in given frame'''
-    frame_small = cv2.resize(frame, None, fx=1.0/SCALE_FACTOR, fy=1.0/SCALE_FACTOR, interpolation=cv2.INTER_LINEAR)
-    kp2, des2 = sift.detectAndCompute(frame_small, None)
-    matches = featurecorr(des1, des2)
-    # match the corners in match
-    m0_uniq = list(set([m[0] for m in matches]))
-    m1_uniq = list(set([m[1] for m in matches]))
-#    #matches_uniq_min = []
-#    #matches_uniq_max = []
-    matches_uniq1 = []
-    for m0 in m0_uniq:
-        dups = [x for x in matches if x[0] == m0]
-        if len(dups) <= 1:
-            matches_uniq1 += dups
-        else:
-            best_dup = min(dups, key = lambda x: x[2])
-            matches_uniq1.append(best_dup)
-    matches_uniq2 = []
-    m1_uniq = list(set([m[1] for m in matches_uniq1]))
-    for m1 in m1_uniq:
-        dups = [x for x in matches if x[1] == m1]
-        if len(dups) <= 1:
-            matches_uniq2 += dups
-        else:
-            best_dup = min(dups, key = lambda x: x[2])
-            matches_uniq2.append(best_dup)
-    
-#    for m1 in m1_uniq:
-#        dups = [x for x in matches if x[1] == m1]
-#        if len(dups) <= 1:
-#            matches_uniq += dups
-#        if len(dups) == 2:
-#            pass # skip this case for now
-#        else:
-#            # determine which corner m0 is
-#            dups = [x for x in matches if x[0] == m0]
-#            dups_sorted = 
-            # take corresponding corner if it exists
-            
-#    for m0 in m0_uniq:
-#        dups = [x for x in matches if x[0] == m0]
-#        if len(dups) <= 1:
-#            matches_uniq += dups
-#        else:
-#            # take the minimum of x+y coords, corresponds to upper left corner
-#            dups_xy_sum = [sum(kp2[int(x[1])].pt) for x in dups]
-#            min_dup = dups[np.argmin(dups_xy_sum)]
-#            matches_uniq_______.append(min_dup)
-#            max_dup = 
-#    for m1 in m1_uniq:
-#        dups = [x for x in matches_uniq0 if x[1] == m1]
-#        if len(dups) <= 1: 
-#            matches_uniq += dups
-#        else:
-#            dups_xy_sum = [sum(kp1[int(x[0])].pt) for x in dups]
-#            min_dup = dups[np.argmin(dups_xy_sum)]
-#            matches_uniq_____________.append(min_dup)
-            
-    sorted_matches = sorted(matches_uniq2, key=lambda tup: tup[2])
-    A = np.array([])
-    if len(matches) > 3:
-        A = affine_solver(kp1, kp2, sorted_matches, 4)
-    return A
     
 if __name__ == '__main__':
     # make numbers human-readable
@@ -205,18 +113,7 @@ if __name__ == '__main__':
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
             out_frame = frame
-            
-#            affine = findLogo(gray, kp_logo, des_logo)
-#            
-#            if len(affine) > 0:
-#                M = np.float32([[affine[0][0],affine[1][0],affine[4][0]],[affine[2][0],affine[3][0],affine[5][0]]])
-#                logo_tl = np.dot(M, np.transpose(np.array([[0,0,1]])))
-#                logo_br = np.dot(M, np.transpose(np.array([[logo_small.shape[1],logo_small.shape[0],1]])))
-#                x1 = int(logo_tl[0][0])*SCALE_FACTOR
-#                y1 = int(logo_tl[1][0])*SCALE_FACTOR
-#                x2 = int(logo_br[0][0])*SCALE_FACTOR
-#                y2 = int(logo_br[1][0])*SCALE_FACTOR
-                # print((x1, y1, x2, y2))
+
             loc = predict_location(gray, kp_logo, des_logo)
             if len(loc) > 0: 
                 x1 = int((loc[0]-loc[2]/2)*SCALE_FACTOR)
