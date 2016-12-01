@@ -104,7 +104,7 @@ def face_detect(frame):
     flipped = cv2.flip(frame,1)
     faceCascade3 = cv2.CascadeClassifier('haarcascade_profileface.xml')
     faces3 = faceCascade3.detectMultiScale(flipped, 
-                                         scaleFactor=1.1,
+                                         scaleFactor=1.06,
                                          minNeighbors=3,
                                          minSize=(MIN,MIN),
                                          maxSize=(MAX,MAX),
@@ -124,8 +124,45 @@ def face_detect(frame):
         output = np.concatenate((output, faces2), axis=0) 
     if len(faces4) > 0:
         output = np.concatenate((output, faces4), axis=0)
-    return output
+    
+    filtered_output = []
+    for face in output:
+        if len(filtered_output) < 1:
+            filtered_output.append(face)
+        else:
+            similar_faces = list(filter(lambda x: is_similar(x, face), filtered_output))
+            if len(similar_faces) < 1:
+                filtered_output.append(face)
+        
+    return filtered_output
 
+def face_track(prev_faces, curr_faces):
+    '''lists of faces in (x,y,w,h) format'''
+    real_faces = []
+    for face in curr_faces:
+        for pface in prev_faces:
+            if is_similar(face, pface):
+                real_faces.append(face)
+    return real_faces
+    # how to add color to faces detected in first frame?
+    # how to add color to new faces detected? 
+    # output: if there are faces and where they are
+    
+def is_similar(face1, face2):
+    '''face: (x,y,w,h)'''
+    threshold = 30
+    for i in range(len(face1)):
+        if abs(face1[i] - face2[i]) > threshold:
+            return False
+    return True
+
+def average_face(face1, face2):
+    '''face: (x,y,w,h)'''
+    x = (face1[0]+face2[0])/2
+    y = (face1[1]+face2[1])/2
+    w = (face1[2]+face2[2])/2
+    h = (face1[3]+face2[3])/2
+    return (x,y,w,h)
     
 if __name__ == '__main__':
     # make numbers human-readable
@@ -136,6 +173,7 @@ if __name__ == '__main__':
     logo_gray = cv2.cvtColor(logo_im, cv2.COLOR_BGR2GRAY)
     SCALE_FACTOR = 4 # downsample by a factor of SCALE_FACTOR
     SHOT_TRANSITION = 8 # number of estimated frames for shot transitions
+    FACE_KEEP = 10
     logo_small = cv2.resize(logo_gray, None, fx=1.0/SCALE_FACTOR, fy=1.0/SCALE_FACTOR, interpolation=cv2.INTER_LINEAR)
     sift = cv2.SIFT(contrastThreshold=0.1, edgeThreshold=5)
     kp_logo, des_logo = sift.detectAndCompute(logo_small, None)
@@ -143,7 +181,7 @@ if __name__ == '__main__':
     # Define VideoCapture object and parameters
     cap_in = cv2.VideoCapture('Alec.avi')
     fourcc = cv2.cv.CV_FOURCC('F', 'M', 'P', '4')
-    out = cv2.VideoWriter('output_alec.avi', fourcc, 30.0, (1280,720))
+    out = cv2.VideoWriter('output_alec_1.avi', fourcc, 30.0, (1280,720))
 
     # set up loop
     ret, frame = cap_in.read()
@@ -152,6 +190,8 @@ if __name__ == '__main__':
     prev_frames = [gray] # keep a stack of previous frames, like maybe 5
     prev_gray = gray
     frame_counter=0 # number of frames processed
+    prev_faces = []
+    prev_face = ()
     
     while(cap_in.isOpened()):
         if ret == True:
@@ -173,16 +213,24 @@ if __name__ == '__main__':
                 zeros = np.zeros((frame.shape[0],frame.shape[1]), dtype="uint8")
                 out_frame = cv2.merge([zeros, zeros, out_frame[:,:,0]])
             
-            faces = face_detect(gray)
-            for (x, y, w, h) in faces:
+            faces_detected = face_detect(gray)
+            if len(prev_face) > 0 and len(faces_detected) > 0:
+                faces = face_track(prev_face, faces_detected)
+            else:
+                faces = faces_detected
+            for face in faces:
+                x, y, w, h = face
                 cv2.rectangle(out_frame, (int(x*SCALE_FACTOR), int(y*SCALE_FACTOR)), (int(x+w)*SCALE_FACTOR, int(y+h)*SCALE_FACTOR), (0,0,255), 2)
-                
+            prev_face = faces_detected
+            prev_faces.append(faces_detected)
             # write frame
             out.write(out_frame)
             prev_frame = frame
             prev_frames.append(gray)
             if len(prev_frames) > SHOT_TRANSITION: # hopefully detect slow transitions
                 prev_frames = prev_frames[1:]
+            if len(prev_faces) > FACE_KEEP:
+                prev_faces = prev_faces[1:]
             prev_gray = gray
             frame_counter+=1
             print(frame_counter),
