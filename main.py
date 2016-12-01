@@ -10,6 +10,7 @@ from skimage.measure import block_reduce
 import matplotlib.pyplot as plt
 import scipy
 from fractions import gcd
+import random
 
 
 #Detect shots in the videos. A shot is a set of consecutive frames with a smooth camera
@@ -136,17 +137,59 @@ def face_detect(frame):
         
     return filtered_output
 
-def face_track(prev_faces, curr_faces):
-    '''lists of faces in (x,y,w,h) format'''
+def face_track(prev_faces_list, curr_faces):
+    '''prev_faces_list is a list of lists of faces in (x,y,w,h) format, from previous frames
+    curr_faces is output of face detection on current frame'''
+    
+    if len(prev_faces_list) < 1:
+        curr_faces_colored = []
+        for face in curr_faces:
+            # add colour label to face
+            colour = (random.randint(1,256), random.randint(1,256), random.randint(1,256))
+            col_face = face.tolist()
+            col_face.append(colour) 
+            curr_faces_colored.append(col_face)
+        return curr_faces_colored
+        
+    output_faces = []
+        
     real_faces = []
     for face in curr_faces:
-        for pface in prev_faces:
+        for pface in prev_faces_list[-1]:
             if is_similar(face, pface):
                 real_faces.append(face)
-    return real_faces
-    # how to add color to faces detected in first frame?
-    # how to add color to new faces detected? 
-    # output: if there are faces and where they are
+                
+    face_counts = {}
+                         
+    for prev_faces in prev_faces_list[::-1]:
+        for face in prev_faces:
+            # find similar faces already in face_counts, if any
+            similar_faces = list(filter(lambda x: is_similar(x[:4], face), face_counts.keys()))
+            if len(similar_faces) > 0:
+                # add a count to the face if found
+                face_counts[tuple(similar_faces[0])] += 1 
+            else:
+                face_counts[tuple(face)] = 1 # add face if not found
+                             
+    for face in curr_faces:
+        similar_faces = list(filter(lambda x: is_similar(x[:4], face), face_counts.keys()))
+        if len(similar_faces) > 0:
+            num_faces = face_counts.pop(similar_faces[0])
+            colour = similar_faces[0][4]
+            col_face = face.tolist()
+            col_face.append(colour)
+            face_counts[tuple(col_face)] = num_faces + 1
+        else:
+            colour = (random.randint(1,256), random.randint(1,256), random.randint(1,256))
+            col_face = face.tolist()
+            col_face.append(colour) # add colour label to face
+            face_counts[tuple(face)] = 1
+    
+    for bface, count in face_counts.items():
+        if count > len(prev_faces_list)/2:
+            output_faces.append(bface)
+
+    return output_faces
     
 def is_similar(face1, face2):
     '''face: (x,y,w,h)'''
@@ -155,7 +198,7 @@ def is_similar(face1, face2):
         if abs(face1[i] - face2[i]) > threshold:
             return False
     return True
-
+    
 def average_face(face1, face2):
     '''face: (x,y,w,h)'''
     x = (face1[0]+face2[0])/2
@@ -181,7 +224,7 @@ if __name__ == '__main__':
     # Define VideoCapture object and parameters
     cap_in = cv2.VideoCapture('Alec.avi')
     fourcc = cv2.cv.CV_FOURCC('F', 'M', 'P', '4')
-    out = cv2.VideoWriter('output_alec_1.avi', fourcc, 30.0, (1280,720))
+    out = cv2.VideoWriter('output_alec_2.avi', fourcc, 30.0, (1280,720))
 
     # set up loop
     ret, frame = cap_in.read()
@@ -212,17 +255,20 @@ if __name__ == '__main__':
             if detectShot(gray, prev_frames[0], 'norm'):
                 zeros = np.zeros((frame.shape[0],frame.shape[1]), dtype="uint8")
                 out_frame = cv2.merge([zeros, zeros, out_frame[:,:,0]])
+                prev_faces = []
             
             faces_detected = face_detect(gray)
-            if len(prev_face) > 0 and len(faces_detected) > 0:
-                faces = face_track(prev_face, faces_detected)
+            if len(faces_detected) > 0:
+                faces = face_track(prev_faces, faces_detected)
             else:
                 faces = faces_detected
             for face in faces:
-                x, y, w, h = face
-                cv2.rectangle(out_frame, (int(x*SCALE_FACTOR), int(y*SCALE_FACTOR)), (int(x+w)*SCALE_FACTOR, int(y+h)*SCALE_FACTOR), (0,0,255), 2)
-            prev_face = faces_detected
-            prev_faces.append(faces_detected)
+                print(face)
+                x, y, w, h, colour = face
+                cv2.rectangle(out_frame, (int(x*SCALE_FACTOR), int(y*SCALE_FACTOR)), (int(x+w)*SCALE_FACTOR, int(y+h)*SCALE_FACTOR), colour, 2)
+            prev_face = faces
+            prev_faces.append(faces)
+            
             # write frame
             out.write(out_frame)
             prev_frame = frame
