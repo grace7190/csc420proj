@@ -84,31 +84,47 @@ def featurecorr(obj_pca, scene_pca):
     
 def face_detect(frame):
     # followed tutorial here: https://realpython.com/blog/python/face-recognition-with-python/
-    MIN = int(0.03 * (frame.shape[0] + frame.shape[1])/2) # min = around 3% of video size
+    frame = cv2.resize(frame, None, fx=1.0/SCALE_FACTOR, fy=1.0/SCALE_FACTOR, interpolation=cv2.INTER_LINEAR)
+    MIN = int(0.05 * (frame.shape[0] + frame.shape[1])/2) # min = around 5% of video size
     MAX = int(0.3 * (frame.shape[0] + frame.shape[1])/2) # max = around 30% of video size
-    faceCascade = cv2.CascadeClassifier('haarcascade_frontalface_default.xml')
+    faceCascade = cv2.CascadeClassifier('haarcascade_frontalface_alt.xml')
     faces = faceCascade.detectMultiScale(frame, 
-                                         scaleFactor=1.12,
+                                         scaleFactor=1.2,
                                          minNeighbors=3,
                                          minSize=(MIN,MIN),
                                          maxSize=(MAX,MAX),
                                          flags = cv2.cv.CV_HAAR_SCALE_IMAGE)
     faceCascade2 = cv2.CascadeClassifier('haarcascade_profileface.xml')
     faces2 = faceCascade2.detectMultiScale(frame, 
-                                         scaleFactor=1.12,
-                                         minNeighbors=4,
+                                         scaleFactor=1.1,
+                                         minNeighbors=3,
                                          minSize=(MIN,MIN),
                                          maxSize=(MAX,MAX),
                                          flags = cv2.cv.CV_HAAR_SCALE_IMAGE)
+    flipped = cv2.flip(frame,1)
+    faceCascade3 = cv2.CascadeClassifier('haarcascade_profileface.xml')
+    faces3 = faceCascade3.detectMultiScale(flipped, 
+                                         scaleFactor=1.1,
+                                         minNeighbors=3,
+                                         minSize=(MIN,MIN),
+                                         maxSize=(MAX,MAX),
+                                         flags = cv2.cv.CV_HAAR_SCALE_IMAGE)
+    faces4 = []
+    for f in faces3:
+        faces4.append([frame.shape[1]-f[0]-f[2],f[1],f[2],f[3]])
+    faces4 = np.array(faces4)
     
-    print "Found {0}+{1} faces!".format(len(faces),len(faces2))
+    print "Found {0}+{1}+{2} faces!".format(len(faces),len(faces2), len(faces4))
     
-    if len(faces) == 0: # the 'numpy arrays are dumb' check
-        return faces2
-    if len(faces2) == 0:
-        return faces
-
-    return np.concatenate((faces, faces2), axis=0) 
+    output = np.zeros((0,4))
+    
+    if len(faces) > 0: # the 'numpy arrays are dumb' check
+        output = np.concatenate((output, faces), axis=0)
+    if len(faces2) > 0:
+        output = np.concatenate((output, faces2), axis=0) 
+    if len(faces4) > 0:
+        output = np.concatenate((output, faces4), axis=0)
+    return output
 
     
 if __name__ == '__main__':
@@ -125,9 +141,9 @@ if __name__ == '__main__':
     kp_logo, des_logo = sift.detectAndCompute(logo_small, None)
     
     # Define VideoCapture object and parameters
-    cap_in = cv2.VideoCapture('test.avi')
+    cap_in = cv2.VideoCapture('Alec.avi')
     fourcc = cv2.cv.CV_FOURCC('F', 'M', 'P', '4')
-    out = cv2.VideoWriter('output_test.avi', fourcc, 30.0, (1280,720))
+    out = cv2.VideoWriter('output_alec.avi', fourcc, 30.0, (1280,720))
 
     # set up loop
     ret, frame = cap_in.read()
@@ -157,9 +173,9 @@ if __name__ == '__main__':
                 zeros = np.zeros((frame.shape[0],frame.shape[1]), dtype="uint8")
                 out_frame = cv2.merge([zeros, zeros, out_frame[:,:,0]])
             
-            faces = face_detect(out_frame)
+            faces = face_detect(gray)
             for (x, y, w, h) in faces:
-                cv2.rectangle(out_frame, (x, y), (x+w, y+h), (0,0,255), 2)
+                cv2.rectangle(out_frame, (int(x*SCALE_FACTOR), int(y*SCALE_FACTOR)), (int(x+w)*SCALE_FACTOR, int(y+h)*SCALE_FACTOR), (0,0,255), 2)
                 
             # write frame
             out.write(out_frame)
