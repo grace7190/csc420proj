@@ -18,10 +18,8 @@ from fractions import gcd
 #you are detecting the shots? Compute your performance
 
 def detectShot(frame1, frame2, option):
-    '''frame 1, frame 2 are frames to compare to see if shot transitions
-    unfortunately ncc requires different thresholds and heavier size reduction
-    to run properly so... this function is kind of... mashed together'''
-
+    '''frame 1, frame 2 are frames to compare to see if shot transitions'''
+    # ssd doesn't seem to be very effective
     if option == 'ssd':
         threshold = 12000000
         small1 = block_reduce(frame1, block_size=(16, 16), func=np.mean)
@@ -32,14 +30,16 @@ def detectShot(frame1, frame2, option):
                 diff = (small1[i,j] - small2[i,j]) ** 2
                 ssd += diff
         return ssd > threshold
-        
+    # thought this would be faster than ssd, seems to have similar results
     elif option == 'norm':
-        threshold = 400
+        threshold = 600
         bsize = gcd(frame1.shape[0], frame1.shape[1])
+        # reduce size of image
         small1 = block_reduce(frame1, block_size=(bsize, bsize), func=np.mean)
         small2 = block_reduce(frame2, block_size=(bsize, bsize), func=np.mean)
+        #take the norm
         norm = np.linalg.norm(small1 - small2)
-        print norm
+        print(norm)
         return norm > threshold
         
     else:
@@ -52,12 +52,13 @@ def predict_location(frame, kp1, des1):
     matches = featurecorr(des1, des2)
     if matches == []:
         return ()
+    # average the points where matches were found to get approximate coordinates
     xs = []
     ys = []
     for m in matches:
         xs.append(kp2[int(m[1])].pt[0])
         ys.append(kp2[int(m[1])].pt[1])
-    size = min(max((max(xs)-min(xs) + max(ys)-min(ys))/2, 25), 600)
+    size = min(max((max(xs)-min(xs) + max(ys)-min(ys))/2, 25), 600) # set min/max size
     return (sum(xs) / float(len(xs)), sum(ys) / float(len(ys)), size)
     
 
@@ -80,6 +81,20 @@ def featurecorr(obj_pca, scene_pca):
             match.append((i, distances.index(min1), ratio))
     return match
     
+    
+def face_detect(frame):
+    # followed tutorial here: https://realpython.com/blog/python/face-recognition-with-python/
+    faceCascade = cv2.CascadeClassifier('haarcascade_frontalface_default.xml')
+    faces = faceCascade.detectMultiScale(gray, 
+                                         scaleFactor=1.1,
+                                         minNeighbors=5,
+                                         minSize=(80,80),
+                                         maxSize=(300,300),
+                                         flags = cv2.cv.CV_HAAR_SCALE_IMAGE)
+    print "Found {0} faces!".format(len(faces))
+    return faces
+
+    
 if __name__ == '__main__':
     # make numbers human-readable
     np.set_printoptions(suppress=True)
@@ -94,9 +109,9 @@ if __name__ == '__main__':
     kp_logo, des_logo = sift.detectAndCompute(logo_small, None)
     
     # Define VideoCapture object and parameters
-    cap_in = cv2.VideoCapture('Alec.avi')
+    cap_in = cv2.VideoCapture('test.avi')
     fourcc = cv2.cv.CV_FOURCC('F', 'M', 'P', '4')
-    out = cv2.VideoWriter('output_alec.avi', fourcc, 30.0, (1280,720))
+    out = cv2.VideoWriter('output_test.avi', fourcc, 30.0, (1280,720))
 
     # set up loop
     ret, frame = cap_in.read()
@@ -125,6 +140,10 @@ if __name__ == '__main__':
             if detectShot(gray, prev_frames[0], 'norm'):
                 zeros = np.zeros((frame.shape[0],frame.shape[1]), dtype="uint8")
                 out_frame = cv2.merge([zeros, zeros, out_frame[:,:,0]])
+            
+            faces = face_detect(out_frame)
+            for (x, y, w, h) in faces:
+                cv2.rectangle(out_frame, (x, y), (x+w, y+h), (0,0,255), 2)
                 
             # write frame
             out.write(out_frame)
