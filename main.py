@@ -84,15 +84,31 @@ def featurecorr(obj_pca, scene_pca):
     
 def face_detect(frame):
     # followed tutorial here: https://realpython.com/blog/python/face-recognition-with-python/
+    MIN = int(0.03 * (frame.shape[0] + frame.shape[1])/2) # min = around 3% of video size
+    MAX = int(0.3 * (frame.shape[0] + frame.shape[1])/2) # max = around 30% of video size
     faceCascade = cv2.CascadeClassifier('haarcascade_frontalface_default.xml')
-    faces = faceCascade.detectMultiScale(gray, 
-                                         scaleFactor=1.1,
-                                         minNeighbors=5,
-                                         minSize=(80,80),
-                                         maxSize=(300,300),
+    faces = faceCascade.detectMultiScale(frame, 
+                                         scaleFactor=1.12,
+                                         minNeighbors=3,
+                                         minSize=(MIN,MIN),
+                                         maxSize=(MAX,MAX),
                                          flags = cv2.cv.CV_HAAR_SCALE_IMAGE)
-    print "Found {0} faces!".format(len(faces))
-    return faces
+    faceCascade2 = cv2.CascadeClassifier('haarcascade_profileface.xml')
+    faces2 = faceCascade2.detectMultiScale(frame, 
+                                         scaleFactor=1.12,
+                                         minNeighbors=4,
+                                         minSize=(MIN,MIN),
+                                         maxSize=(MAX,MAX),
+                                         flags = cv2.cv.CV_HAAR_SCALE_IMAGE)
+    
+    print "Found {0}+{1} faces!".format(len(faces),len(faces2))
+    
+    if len(faces) == 0: # the 'numpy arrays are dumb' check
+        return faces2
+    if len(faces2) == 0:
+        return faces
+
+    return np.concatenate((faces, faces2), axis=0) 
 
     
 if __name__ == '__main__':
