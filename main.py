@@ -7,11 +7,15 @@ Created on Sat Nov 12 14:31:49 2016
 import numpy as np
 import cv2
 from skimage.measure import block_reduce
-import matplotlib.pyplot as plt
-import scipy
 from fractions import gcd
 import random
+from sklearn import svm
+from sklearn.externals import joblib
+import glob
 
+SCALE_FACTOR = 4 # downsample by a factor of SCALE_FACTOR
+SHOT_TRANSITION = 8 # number of estimated frames for shot transitions
+FACE_KEEP = 10
 
 #Detect shots in the videos. A shot is a set of consecutive frames with a smooth camera
 #motion.
@@ -33,7 +37,7 @@ def detectShot(frame1, frame2, option):
         return ssd > threshold
     # thought this would be faster than ssd, seems to have similar results
     elif option == 'norm':
-        threshold = 600
+        threshold = 500
         bsize = gcd(frame1.shape[0], frame1.shape[1])
         # reduce size of image
         small1 = block_reduce(frame1, block_size=(bsize, bsize), func=np.mean)
@@ -137,6 +141,7 @@ def face_detect(frame):
         
     return filtered_output
 
+
 def face_track(prev_faces_list, curr_faces):
     '''prev_faces_list is a list of lists of faces in (x,y,w,h) format, from previous frames
     curr_faces is output of face detection on current frame'''
@@ -193,7 +198,8 @@ def face_track(prev_faces_list, curr_faces):
             output_faces.append(bface)
 
     return output_faces
-    
+
+
 def is_similar(face1, face2):
     '''face: (x,y,w,h)'''
     threshold = 30
@@ -201,7 +207,8 @@ def is_similar(face1, face2):
         if abs(face1[i] - face2[i]) > threshold:
             return False
     return True
-    
+
+
 def average_face(face1, face2):
     '''face: (x,y,w,h)'''
     x = (face1[0]+face2[0])/2
@@ -209,21 +216,79 @@ def average_face(face1, face2):
     w = (face1[2]+face2[2])/2
     h = (face1[3]+face2[3])/2
     return (x,y,w,h)
+
+
+def train_HOG_SVM():
+    hog = cv2.HOGDescriptor()
+    clf = svm.SVC(gamma=0.001, C=100.)
+    features = []
+    labels = []
+
+    for filename in glob.glob("AdienceDB/female_faces/*.jpg"):
+        face = cv2.imread(filename)
+        face = cv2.cvtColor(face, cv2.COLOR_BGR2GRAY)
+        face = cv2.resize(face, (156, 156))
+        features.append(hog.compute(face).flatten())
+        labels.append("female")
+    print "done females"
+    for filename in glob.glob("AdienceDB/male_faces/*.jpg"):
+        face = cv2.imread(filename)
+        face = cv2.cvtColor(face, cv2.COLOR_BGR2GRAY)
+        face = cv2.resize(face, (156, 156))
+        features.append(hog.compute(face).flatten())
+        labels.append("male")
+    print "done males"
+
+    clf.fit(features, labels)
+    print "done training"
+
+    joblib.dump(clf, "clf.pkl")
+
     
 if __name__ == '__main__':
+
+    # for i in range(9):
+    #     frame = cv2.imread("faces_{0}.png".format(i+1))
+    #     out_frame = frame[:,:,:]
+    #     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    #     faces = face_detect(gray)
+    #
+    #     for (x, y, w, h) in faces:
+    #         x = int(x)*SCALE_FACTOR
+    #         y = int(y)*SCALE_FACTOR
+    #         w = int(w)*SCALE_FACTOR
+    #         h = int(h)*SCALE_FACTOR
+    #         print (h,w)
+    #         face = out_frame[y:y+h, x:x+w, :]
+    #         face = cv2.cvtColor(face, cv2.COLOR_BGR2GRAY)
+    #         face = cv2.resize(face, (156,156))
+    #         print face.shape
+    #         cv2.imshow("face", face)
+    #         cv2.waitKey(0)
+    #         hog_face = hog.compute(face)
+    #         print(hog_face)
+    #         print(hog_face.shape)
+    #         cv2.rectangle(out_frame, (x, y), (x+w, y+h), (0, 0, 255), 2)
+    #     cv2.imshow("we", out_frame)
+    #     cv2.waitKey(0)
+
+
+    # Load in pretrained SVM
+    clf = joblib.load("clf.pkl")
+
     # make numbers human-readable
     np.set_printoptions(suppress=True)
-    
+
     # set up SIFT parameters
     logo_im = cv2.imread('cbc_logo.png')
     logo_gray = cv2.cvtColor(logo_im, cv2.COLOR_BGR2GRAY)
-    SCALE_FACTOR = 4 # downsample by a factor of SCALE_FACTOR
-    SHOT_TRANSITION = 8 # number of estimated frames for shot transitions
-    FACE_KEEP = 10
+    # SCALE_FACTOR = 4 # downsample by a factor of SCALE_FACTOR
+    # SHOT_TRANSITION = 8 # number of estimated frames for shot transitions
+    # FACE_KEEP = 10
     logo_small = cv2.resize(logo_gray, None, fx=1.0/SCALE_FACTOR, fy=1.0/SCALE_FACTOR, interpolation=cv2.INTER_LINEAR)
     sift = cv2.SIFT(contrastThreshold=0.1, edgeThreshold=5)
     kp_logo, des_logo = sift.detectAndCompute(logo_small, None)
-    
+
     # Define VideoCapture object and parameters
     cap_in = cv2.VideoCapture('Alec.avi')
     fourcc = cv2.cv.CV_FOURCC('F', 'M', 'P', '4')
@@ -238,28 +303,28 @@ if __name__ == '__main__':
     frame_counter=0 # number of frames processed
     prev_faces = []
     prev_face = ()
-    
+
     while(cap_in.isOpened()):
         if ret == True:
-            
+
             # process frame
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
             out_frame = frame
 
             loc = predict_location(gray, kp_logo, des_logo)
-            if len(loc) > 0: 
+            if len(loc) > 0:
                 x1 = int((loc[0]-loc[2]/2)*SCALE_FACTOR)
                 x2 = int((loc[0]+loc[2]/2)*SCALE_FACTOR)
                 y1 = int((loc[1]-loc[2]/2)*SCALE_FACTOR)
                 y2 = int((loc[1]+loc[2]/2)*SCALE_FACTOR)
                 cv2.rectangle(out_frame, (x1, y1), (x2, y2), (255,255,255), 4)
-            
+
             if detectShot(gray, prev_frames[0], 'norm'):
                 zeros = np.zeros((frame.shape[0],frame.shape[1]), dtype="uint8")
                 out_frame = cv2.merge([zeros, zeros, out_frame[:,:,0]])
                 prev_faces = []
-            
+
             faces_detected = face_detect(gray)
             if len(faces_detected) > 0:
                 faces = face_track(prev_faces, faces_detected)
@@ -271,7 +336,7 @@ if __name__ == '__main__':
                 cv2.rectangle(out_frame, (int(x*SCALE_FACTOR), int(y*SCALE_FACTOR)), (int(x+w)*SCALE_FACTOR, int(y+h)*SCALE_FACTOR), colour, 2)
             prev_face = faces
             prev_faces.append(faces)
-            
+
             # write frame
             out.write(out_frame)
             prev_frame = frame
@@ -287,11 +352,10 @@ if __name__ == '__main__':
                 break
         else:
             break
-        
+
         # read next frame
         ret, frame = cap_in.read()
-        
+
     cap_in.release()
     out.release()
     cv2.destroyAllWindows()
-    
