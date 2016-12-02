@@ -174,18 +174,21 @@ def face_track(prev_faces_list, curr_faces):
     for face in curr_faces:
         similar_faces = list(filter(lambda x: is_similar(x[:4], face), face_counts.keys()))
         if len(similar_faces) > 0:
+            # if there's already a similar face in prev_faces, update coordinate in face_counts
             num_faces = face_counts.pop(similar_faces[0])
             colour = similar_faces[0][4]
             col_face = face.tolist()
             col_face.append(colour)
             face_counts[tuple(col_face)] = num_faces + 1
         else:
+            # otherwise, add face to face_counts. probably useless code for now
             colour = (random.randint(1,256), random.randint(1,256), random.randint(1,256))
             col_face = face.tolist()
             col_face.append(colour) # add colour label to face
             face_counts[tuple(face)] = 1
     
     for bface, count in face_counts.items():
+        # only significant if face appears more than half the times in previous x frames
         if count > len(prev_faces_list)/2:
             output_faces.append(bface)
 
