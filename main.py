@@ -16,6 +16,7 @@ import glob
 SCALE_FACTOR = 4 # downsample by a factor of SCALE_FACTOR
 SHOT_TRANSITION = 8 # number of estimated frames for shot transitions
 FACE_KEEP = 10
+hog = cv2.HOGDescriptor()
 
 #Detect shots in the videos. A shot is a set of consecutive frames with a smooth camera
 #motion.
@@ -175,7 +176,7 @@ def face_track(prev_faces_list, curr_faces):
                 face_counts[tuple(similar_faces[0])] += 1 
             else:
                 face_counts[tuple(face)] = 1 # add face if not found
-                             
+
     for face in curr_faces:
         similar_faces = list(filter(lambda x: is_similar(x[:4], face), face_counts.keys()))
         if len(similar_faces) > 0:
@@ -219,7 +220,6 @@ def average_face(face1, face2):
 
 
 def train_HOG_SVM():
-    hog = cv2.HOGDescriptor()
     clf = svm.SVC(gamma=0.001, C=100.)
     features = []
     labels = []
@@ -331,9 +331,19 @@ if __name__ == '__main__':
             else:
                 faces = faces_detected
             for face in faces:
-                print(face)
+                # print(face)
                 x, y, w, h, colour = face
-                cv2.rectangle(out_frame, (int(x*SCALE_FACTOR), int(y*SCALE_FACTOR)), (int(x+w)*SCALE_FACTOR, int(y+h)*SCALE_FACTOR), colour, 2)
+                x = int(x*SCALE_FACTOR)
+                y = int(y*SCALE_FACTOR)
+                w = int(w*SCALE_FACTOR)
+                h = int(h*SCALE_FACTOR)
+                cv2.rectangle(out_frame, (x, y), (x+w, y+h), colour, 2)
+                face_image = gray[y:y+h,x:x+w]
+                face_image = cv2.resize(face_image, (156, 156))
+                gender = clf.predict([hog.compute(face_image).flatten()])
+                #print(gender)
+                gender_label_colour = (255,128,128) if gender == 'male' else (128,128,255) 
+                cv2.putText(out_frame, gender[0], (x,y), cv2.FONT_HERSHEY_SIMPLEX, 2, gender_label_colour)
             prev_face = faces
             prev_faces.append(faces)
 
