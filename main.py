@@ -14,7 +14,7 @@ from sklearn.externals import joblib
 import glob
 
 SCALE_FACTOR = 4 # downsample by a factor of SCALE_FACTOR
-SHOT_TRANSITION = 8 # number of estimated frames for shot transitions
+SHOT_TRANSITION = 5 # number of estimated frames for shot transitions
 FACE_KEEP = 10
 hog = cv2.HOGDescriptor()
 
@@ -38,7 +38,7 @@ def detectShot(frame1, frame2, option):
         return ssd > threshold
     # thought this would be faster than ssd, seems to have similar results
     elif option == 'norm':
-        threshold = 500
+        threshold = 600
         bsize = gcd(frame1.shape[0], frame1.shape[1])
         # reduce size of image
         small1 = block_reduce(frame1, block_size=(bsize, bsize), func=np.mean)
@@ -72,6 +72,9 @@ def featurecorr(obj_pca, scene_pca):
     '''given features of object and features of scene, determine matches)'''
     match = []
     threshold = 0.6
+    if obj_pca == None or scene_pca == None:
+        print("no features")
+        return []
     for i in range(0,len(obj_pca)):
         f = obj_pca[i]
         distances = []
@@ -95,14 +98,14 @@ def face_detect(frame):
     MAX = int(0.3 * (frame.shape[0] + frame.shape[1])/2) # max = around 30% of video size
     faceCascade = cv2.CascadeClassifier('haarcascade_frontalface_alt.xml')
     faces = faceCascade.detectMultiScale(frame,
-                                         scaleFactor=1.2,
+                                         scaleFactor=1.16,
                                          minNeighbors=3,
                                          minSize=(MIN,MIN),
                                          maxSize=(MAX,MAX),
                                          flags = cv2.cv.CV_HAAR_SCALE_IMAGE)
     faceCascade2 = cv2.CascadeClassifier('haarcascade_profileface.xml')
     faces2 = faceCascade2.detectMultiScale(frame,
-                                         scaleFactor=1.1,
+                                         scaleFactor=1.06,
                                          minNeighbors=3,
                                          minSize=(MIN,MIN),
                                          maxSize=(MAX,MAX),
@@ -248,9 +251,12 @@ def train_HOG_SVM():
 def face_track2(frame_faces_list):
     # list of lists of faces, grouped by similarity
     similar_faces = []
+
+    frame_faces_list = [[z.tolist() for z in x] for x in frame_faces_list]
     # initialise list with first frame faces
-    for face in frame_faces_list[0]:
-        similar_faces.append([face])
+    if frame_faces_list != []:
+        for face in frame_faces_list[0]:
+            similar_faces.append([face])
 
     # compare the faces from subsequent frames
     for i in range(len(frame_faces_list)-1):
@@ -258,6 +264,7 @@ def face_track2(frame_faces_list):
         for face_list in similar_faces:
             found_similar = False
             # get the latest non-False face
+            
             latest_face = np.trim_zeros(face_list)[-1]
             # compare latest face to frame faces
             for frame_face in frame_faces[::-1]:
@@ -286,7 +293,7 @@ def face_track2(frame_faces_list):
     for face_list in similar_faces[::-1]:
         non_null_faces = filter(lambda x: x, face_list)
         # remove "faces" that don't appear often enough
-        if len(non_null_faces) < 5:
+        if len(non_null_faces) < 3:
             similar_faces.remove(face_list)
 
         # assign face colour
@@ -299,7 +306,8 @@ def face_track2(frame_faces_list):
 
 def decide_gender(face_list, frames):
     '''Decide face gender based on random sampling'''
-    range = min(len(face_list)/2, 10)
+    NUM_SAMPLES = 20
+    range = min(len(face_list)/2, NUM_SAMPLES)
     male = 0
     female = 0
     i = 0
@@ -372,7 +380,7 @@ if __name__ == '__main__':
     # Define VideoCapture object and parameters
     cap_in = cv2.VideoCapture('Alec.avi')
     fourcc = cv2.cv.CV_FOURCC('F', 'M', 'P', '4')
-    out = cv2.VideoWriter('output_alec_2.avi', fourcc, 30.0, (1280,720))
+    out = cv2.VideoWriter('output_alec_shotexample.avi', fourcc, 30.0, (1280,720))
 
     # set up loop
     ret, frame = cap_in.read()
@@ -396,7 +404,7 @@ if __name__ == '__main__':
                 x2 = int((loc[0]+loc[2]/2)*SCALE_FACTOR)
                 y1 = int((loc[1]-loc[2]/2)*SCALE_FACTOR)
                 y2 = int((loc[1]+loc[2]/2)*SCALE_FACTOR)
-                cv2.rectangle(out_frame, (x1, y1), (x2, y2), (255,255,255), 4)
+                # cv2.rectangle(out_frame, (x1, y1), (x2, y2), (255,255,255), 4)
 
             faces_detected = face_detect(gray)
             # save up shot's-worth of out_frames and detected faces
@@ -426,7 +434,7 @@ if __name__ == '__main__':
                             h = int(h * SCALE_FACTOR)
                             cv2.rectangle(out_frames[i], (x, y), (x + w, y + h), colour, 2)
                             gender_label_colour = (255, 128, 128) if gender == 'male' else (128, 128, 255)
-                            cv2.putText(out_frames[i], gender, (x, y), cv2.FONT_HERSHEY_SIMPLEX, 2, gender_label_colour)
+                            cv2.putText(out_frames[i], gender, (x, y), cv2.FONT_HERSHEY_SIMPLEX, 2, gender_label_colour, 2)
 
                 # draw out shot frames
                 for temp in out_frames:
@@ -442,11 +450,36 @@ if __name__ == '__main__':
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
         else:
+            # get lists of real faces, colour, and gender
+            faces = face_track2(shot_faces)
+            for face_list in faces:
+                # face_list = [(face), (face), ..., (face), colour]
+                colour = face_list[-2]
+                gender = decide_gender(face_list[:-1], out_frames)
+                for i in range(len(out_frames)):
+                    # if face was present in frame, draw it into output
+                    if face_list[i]:
+                        x, y, w, h = face_list[i]
+                        x = int(x * SCALE_FACTOR)
+                        y = int(y * SCALE_FACTOR)
+                        w = int(w * SCALE_FACTOR)
+                        h = int(h * SCALE_FACTOR)
+                        cv2.rectangle(out_frames[i], (x, y), (x + w, y + h), colour, 2)
+                        gender_label_colour = (255, 128, 128) if gender == 'male' else (128, 128, 255)
+                        cv2.putText(out_frames[i], gender, (x, y), cv2.FONT_HERSHEY_SIMPLEX, 2, gender_label_colour)
+
+            # draw out shot frames
+            for temp in out_frames:
+                out.write(temp)
+            out_frames = []
+            shot_faces = []
             break
 
         # read next frame
         ret, frame = cap_in.read()
-
+    
+        
+    
     cap_in.release()
     out.release()
     cv2.destroyAllWindows()
